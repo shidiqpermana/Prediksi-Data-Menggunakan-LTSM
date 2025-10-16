@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bike Sharing Demand Forecast</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .hero-section {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 60px 0;
+        }
+        .card {
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            border: none;
+            border-radius: 10px;
+        }
+        .card-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 10px 10px 0 0 !important;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            border-radius: 25px;
+            padding: 10px 30px;
+        }
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+        .prediction-card {
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            color: white;
+            border-radius: 15px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .chart-container {
+            background: white;
+            border-radius: 10px;
+            padding: 15px;
+            margin: 10px 0;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            max-height: 400px;
+            overflow: hidden;
+        }
+        .loading {
+            display: none;
+        }
+        .loading.show {
+            display: block;
+        }
+        #predictionResult {
+            min-height: 100px;
+            border: 2px dashed #007bff;
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+            background-color: #f8f9fa;
+            margin-top: 20px;
+        }
+        #predictionResult:empty::before {
+            content: "🎯 Prediction results will appear here...";
+            color: #007bff;
+            font-style: italic;
+            font-weight: bold;
+        }
+        #forecastResult {
+            min-height: 100px;
+            border: 2px dashed #007bff;
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+            background-color: #f8f9fa;
+            margin-top: 20px;
+        }
+        #forecastResult:empty::before {
+            content: "📊 24-hour forecast results will appear here...";
+            color: #007bff;
+            font-style: italic;
+            font-weight: bold;
+        }
+        .prediction-card {
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            color: white;
+            border-radius: 15px;
+            padding: 20px;
+            margin: 20px 0;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+        .spinner-border {
+            color: #667eea;
+        }
+    </style>
+</head>
+<body>
+    <!-- Hero Section -->
+    <div class="hero-section">
+        <div class="container">
+            <div class="row">
+                <div class="col-lg-8 mx-auto text-center">
+                    <h1 class="display-4 mb-4">
+                        <i class="fas fa-bicycle me-3"></i>
+                        Bike Sharing Demand Forecast
+                    </h1>
+                    <p class="lead">
+                        Predict bike sharing demand using advanced LSTM neural networks. 
+                        Get insights into usage patterns and future trends.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container my-5">
+        <!-- Historical Data Section -->
+        <div class="row mb-5">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="mb-0">
+                            <i class="fas fa-chart-line me-2"></i>
+                            Historical Data Analysis
+                        </h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-container">
+                            <img src="data:image/png;base64,{{ historical_plot }}" class="img-fluid" alt="Historical Data">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Pattern Analysis Section -->
+        <div class="row mb-5">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="mb-0">
+                            <i class="fas fa-chart-bar me-2"></i>
+                            Usage Patterns Analysis
+                        </h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-container">
+                            <img src="data:image/png;base64,{{ pattern_plots }}" class="img-fluid" alt="Pattern Analysis">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Prediction Section -->
+        <div class="row mb-5">
+            <div class="col-lg-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="mb-0">
+                            <i class="fas fa-crystal-ball me-2"></i>
+                            Single Prediction
+                        </h3>
+                    </div>
+                    <div class="card-body">
+                        <form id="predictionForm">
+                            <div class="mb-3">
+                                <label for="datetime" class="form-label">Date & Time</label>
+                                <input type="datetime-local" class="form-control" id="datetime" required>
+                            </div>
+                            
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="season" class="form-label">Season</label>
+                                        <select class="form-select" id="season">
+                                            <option value="1">Spring</option>
+                                            <option value="2">Summer</option>
+                                            <option value="3">Fall</option>
+                                            <option value="4">Winter</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="weather" class="form-label">Weather</label>
+                                        <select class="form-select" id="weather">
+                                            <option value="1">Clear</option>
+                                            <option value="2">Mist</option>
+                                            <option value="3">Light Rain</option>
+                                            <option value="4">Heavy Rain</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="temp" class="form-label">Temperature (°C)</label>
+                                        <input type="number" class="form-control" id="temp" value="20" step="0.1">
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="humidity" class="form-label">Humidity (%)</label>
+                                        <input type="number" class="form-control" id="humidity" value="50" step="1">
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="windspeed" class="form-label">Wind Speed</label>
+                                        <input type="number" class="form-control" id="windspeed" value="10" step="0.1">
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="holiday" class="form-label">Holiday</label>
+                                        <select class="form-select" id="holiday">
+                                            <option value="0">No</option>
+                                            <option value="1">Yes</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <button type="submit" class="btn btn-primary w-100">
+                                <i class="fas fa-magic me-2"></i>
+                                Predict Demand
+                            </button>
+                        </form>
+                        
+                        <div class="loading text-center mt-3">
+                            <div class="spinner-border" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2">Making prediction...</p>
+                        </div>
+                        
+                        <div id="predictionResult" class="mt-3"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-lg-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="mb-0">
+                            <i class="fas fa-chart-area me-2"></i>
+                            24-Hour Forecast
+                        </h3>
+                    </div>
+                    <div class="card-body">
+                        <form id="forecastForm">
+                            <div class="mb-3">
+                                <label for="forecastStart" class="form-label">Start Date & Time</label>
+                                <input type="datetime-local" class="form-control" id="forecastStart" required>
+                            </div>
+                            
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="forecastSeason" class="form-label">Season</label>
+                                        <select class="form-select" id="forecastSeason">
+                                            <option value="1">Spring</option>
+                                            <option value="2">Summer</option>
+                                            <option value="3">Fall</option>
+                                            <option value="4">Winter</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="forecastWeather" class="form-label">Weather</label>
+                                        <select class="form-select" id="forecastWeather">
+                                            <option value="1">Clear</option>
+                                            <option value="2">Mist</option>
+                                            <option value="3">Light Rain</option>
+                                            <option value="4">Heavy Rain</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="forecastTemp" class="form-label">Temperature (°C)</label>
+                                        <input type="number" class="form-control" id="forecastTemp" value="20" step="0.1">
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="forecastHumidity" class="form-label">Humidity (%)</label>
+                                        <input type="number" class="form-control" id="forecastHumidity" value="50" step="1">
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <button type="submit" class="btn btn-primary w-100">
+                                <i class="fas fa-chart-line me-2"></i>
+                                Generate Forecast
+                            </button>
+                        </form>
+                        
+                        <div class="loading text-center mt-3">
+                            <div class="spinner-border" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2">Generating forecast...</p>
+                        </div>
+                        
+                        <div id="forecastResult" class="mt-3"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Insights Section -->
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="mb-0">
+                            <i class="fas fa-lightbulb me-2"></i>
+                            Data Insights
+                        </h3>
+                    </div>
+                    <div class="card-body">
+                        <div id="insightsContent">
+                            <div class="text-center">
+                                <div class="spinner-border" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                                <p class="mt-2">Loading insights...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        // Set default datetime to current time
+        document.getElementById('datetime').value = new Date().toISOString().slice(0, 16);
+        document.getElementById('forecastStart').value = new Date().toISOString().slice(0, 16);
+
+        // Single Prediction Form
+        document.getElementById('predictionForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            console.log('Form submitted!');
+            
+            const resultDiv = document.getElementById('predictionResult');
+            
+            console.log('Result div:', resultDiv);
+            
+            // Show loading message directly in result div
+            resultDiv.innerHTML = '<div style="background: #d1ecf1; color: #0c5460; padding: 15px; border-radius: 5px; border: 1px solid #bee5eb;">🔄 Processing prediction...</div>';
+            
+            // Force show the result div
+            resultDiv.style.display = 'block';
+            resultDiv.style.visibility = 'visible';
+            
+            try {
+                const formData = {
+                    datetime: document.getElementById('datetime').value + ':00',
+                    season: document.getElementById('season').value,
+                    weather: document.getElementById('weather').value,
+                    temp: parseFloat(document.getElementById('temp').value),
+                    atemp: parseFloat(document.getElementById('temp').value) + 5, // Approximate
+                    humidity: parseFloat(document.getElementById('humidity').value),
+                    windspeed: parseFloat(document.getElementById('windspeed').value),
+                    holiday: document.getElementById('holiday').value,
+                    workingday: document.getElementById('holiday').value === '0' ? 1 : 0
+                };
+                
+                // Debug logging
+                console.log('Sending prediction request with data:', formData);
+                
+                const response = await fetch('/predict', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(formData)
+                });
+                
+                const result = await response.json();
+                
+                // Debug logging
+                console.log('Received response:', result);
+                
+                if (response.ok) {
+                    resultDiv.innerHTML = `
+                        <div class="prediction-card text-center">
+                            <h4><i class="fas fa-bicycle me-2"></i>Predicted Demand</h4>
+                            <h2 class="display-4">${result.prediction}</h2>
+                            <p class="mb-0">bikes expected</p>
+                            <small class="text-muted">For ${new Date(formData.datetime).toLocaleString()}</small>
+                        </div>
+                    `;
+                    alert(`Prediction successful: ${result.prediction} bikes!`);
+                } else {
+                    resultDiv.innerHTML = `<div class="alert alert-danger">Error: ${result.error}</div>`;
+                    alert(`Error: ${result.error}`);
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
+            } finally {
+                // Loading completed
+            }
+        });
+
+        // Forecast Form
+        document.getElementById('forecastForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            console.log('Forecast form submitted!');
+            
+            const loading = document.querySelector('#forecastForm .loading');
+            const resultDiv = document.getElementById('forecastResult');
+            
+            // Check if loading element exists
+            if (loading) {
+                loading.classList.add('show');
+            }
+            
+            // Show loading message in result div
+            resultDiv.innerHTML = '<div style="background: #d1ecf1; color: #0c5460; padding: 15px; border-radius: 5px; border: 1px solid #bee5eb;">🔄 Generating 24-hour forecast...</div>';
+            
+            try {
+                const formData = {
+                    start_datetime: document.getElementById('forecastStart').value + ':00',
+                    season: document.getElementById('forecastSeason').value,
+                    weather: document.getElementById('forecastWeather').value,
+                    temp: parseFloat(document.getElementById('forecastTemp').value),
+                    atemp: parseFloat(document.getElementById('forecastTemp').value) + 5,
+                    humidity: parseFloat(document.getElementById('forecastHumidity').value),
+                    windspeed: 10,
+                    holiday: 0,
+                    workingday: 1
+                };
+                
+                console.log('Sending forecast request with data:', formData);
+                
+                const response = await fetch('/forecast', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(formData)
+                });
+                
+                const result = await response.json();
+                
+                console.log('Received forecast response:', result);
+                
+                if (response.ok) {
+                    // Clear previous chart if exists
+                    const existingChart = document.getElementById('forecastChart');
+                    if (existingChart) {
+                        existingChart.remove();
+                    }
+                    
+                    // Create chart container
+                    resultDiv.innerHTML = `
+                        <div class="chart-container">
+                            <h5 class="text-center mb-3">24-Hour Demand Forecast</h5>
+                            <div style="position: relative; height: 300px; width: 100%;">
+                                <canvas id="forecastChart"></canvas>
+                            </div>
+                        </div>
+                    `;
+                    
+                    // Create chart
+                    const ctx = document.getElementById('forecastChart');
+                    new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: result.forecast.map(item => item.hour + ':00'),
+                            datasets: [{
+                                label: 'Predicted Demand',
+                                data: result.forecast.map(item => item.prediction),
+                                borderColor: '#667eea',
+                                backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                                tension: 0.4,
+                                fill: true
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            aspectRatio: 2,
+                            plugins: {
+                                title: {
+                                    display: false
+                                },
+                                legend: {
+                                    display: true,
+                                    position: 'top'
+                                }
+                            },
+                            scales: {
+                                y: {
+                                    beginAtZero: true,
+                                    title: {
+                                        display: true,
+                                        text: 'Number of Bikes'
+                                    },
+                                    grid: {
+                                        display: true,
+                                        color: 'rgba(0,0,0,0.1)'
+                                    }
+                                },
+                                x: {
+                                    title: {
+                                        display: true,
+                                        text: 'Hour of Day'
+                                    },
+                                    grid: {
+                                        display: true,
+                                        color: 'rgba(0,0,0,0.1)'
+                                    }
+                                }
+                            },
+                            elements: {
+                                line: {
+                                    tension: 0.4
+                                }
+                            }
+                        }
+                    });
+                    
+                    // Add summary
+                    const summary = document.createElement('div');
+                    summary.className = 'mt-2';
+                    summary.innerHTML = `
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="text-center p-2 bg-light rounded">
+                                    <h6 class="mb-1">Peak Hour</h6>
+                                    <h5 class="mb-0">${Math.max(...result.forecast.map(item => item.prediction))}</h5>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="text-center p-2 bg-light rounded">
+                                    <h6 class="mb-1">Average</h6>
+                                    <h5 class="mb-0">${Math.round(result.forecast.reduce((sum, item) => sum + item.prediction, 0) / result.forecast.length)}</h5>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="text-center p-2 bg-light rounded">
+                                    <h6 class="mb-1">Total</h6>
+                                    <h5 class="mb-0">${result.forecast.reduce((sum, item) => sum + item.prediction, 0)}</h5>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    resultDiv.appendChild(summary);
+                    
+                } else {
+                    resultDiv.innerHTML = `<div class="alert alert-danger">Error: ${result.error}</div>`;
+                }
+            } catch (error) {
+                console.error('Forecast error:', error);
+                resultDiv.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
+            } finally {
+                if (loading) {
+                    loading.classList.remove('show');
+                }
+            }
+        });
+
+        // Load insights
+        async function loadInsights() {
+            try {
+                const response = await fetch('/insights');
+                const insights = await response.json();
+                
+                if (response.ok) {
+                    document.getElementById('insightsContent').innerHTML = `
+                        <div class="row">
+                            <div class="col-md-3">
+                                <div class="text-center p-3 bg-light rounded">
+                                    <h5><i class="fas fa-bicycle text-primary"></i></h5>
+                                    <h4>${insights.total_rentals.toLocaleString()}</h4>
+                                    <p class="mb-0">Total Rentals</p>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="text-center p-3 bg-light rounded">
+                                    <h5><i class="fas fa-clock text-success"></i></h5>
+                                    <h4>${insights.peak_hour}:00</h4>
+                                    <p class="mb-0">Peak Hour</p>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="text-center p-3 bg-light rounded">
+                                    <h5><i class="fas fa-calendar text-warning"></i></h5>
+                                    <h4>${insights.peak_month}</h4>
+                                    <p class="mb-0">Peak Month</p>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="text-center p-3 bg-light rounded">
+                                    <h5><i class="fas fa-cloud-sun text-info"></i></h5>
+                                    <h4>${insights.weather_impact.clear}</h4>
+                                    <p class="mb-0">Clear Weather Avg</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row mt-4">
+                            <div class="col-md-6">
+                                <h6>Weekend vs Weekday</h6>
+                                <div class="progress mb-2">
+                                    <div class="progress-bar" style="width: ${(insights.weekend_vs_weekday.weekend / insights.weekend_vs_weekday.weekday * 100)}%">
+                                        Weekend: ${insights.weekend_vs_weekday.weekend}
+                                    </div>
+                                </div>
+                                <div class="progress">
+                                    <div class="progress-bar bg-success" style="width: 100%">
+                                        Weekday: ${insights.weekend_vs_weekday.weekday}
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <h6>Weather Impact</h6>
+                                <ul class="list-unstyled">
+                                    <li><i class="fas fa-sun text-warning"></i> Clear: ${insights.weather_impact.clear}</li>
+                                    <li><i class="fas fa-cloud text-secondary"></i> Mist: ${insights.weather_impact.mist}</li>
+                                    <li><i class="fas fa-cloud-rain text-primary"></i> Light Rain: ${insights.weather_impact.light_rain}</li>
+                                    <li><i class="fas fa-cloud-showers-heavy text-danger"></i> Heavy Rain: ${insights.weather_impact.heavy_rain}</li>
+                                </ul>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    document.getElementById('insightsContent').innerHTML = `<div class="alert alert-danger">Error loading insights</div>`;
+                }
+            } catch (error) {
+                document.getElementById('insightsContent').innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
+            }
+        }
+
+        // Load insights on page load
+        loadInsights();
+    </script>
+</body>
+</html>
